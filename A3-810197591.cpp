@@ -24,6 +24,8 @@ enum command_placeHolder {Get = 0, Arg1, Arg2};
 enum time_placeHolder {Hour = 0, Minute};
 
 typedef tuple<int, int> Time;
+typedef vector<string> ConsoleMap;
+typedef tuple<int, string> Extracted;
 
 struct Movie {
     string CinemaName;
@@ -37,10 +39,8 @@ struct Movie {
 
 typedef vector<Movie> MovieList;
 typedef vector<MovieList> WeekShowTimes;
-typedef vector<string> ConsoleMap;
-typedef tuple<int, string> Extracted;
 
-bool first_time_is_earlier(Time time_1, Time time_2)
+bool first_time_is_earlier(const Time& time_1, const Time& time_2)
 {
     return get<Hour>(time_1) < get<Hour>(time_2) ||
         (get<Hour>(time_1) == get<Hour>(time_2) && get<Minute>(time_1) <= get<Minute>(time_2));  
@@ -101,7 +101,7 @@ MovieList sort_by_Day(MovieList movie_list)
     return movie_list;
 }
 
-bool times_are_same(Time time_1, Time time_2)
+bool times_are_same(const Time& time_1, const Time& time_2)
 {
     return (get<Hour>(time_1) == get<Hour>(time_2)
         && get<Minute>(time_1) == get<Minute>(time_2));
@@ -117,10 +117,10 @@ string convert_day2str(day day_num)
         return iterator->second;
 }
 
-string convert_Time2str(Time time_)
+string convert_Time2str(const Time& time)
 {
     string hour_str, minute_str;
-    int hour = get<Hour>(time_), minute = get<Minute>(time_);
+    int hour = get<Hour>(time), minute = get<Minute>(time);
     if(hour < 10)
         hour_str = '0' + to_string(hour);
     else
@@ -153,11 +153,6 @@ vector<string> parse_csv_line(const string& csv_line)
     }
     parsed_words.push_back(word);
     return parsed_words;
-}
-
-vector<string> get_headings(string csv_headings_line)
-{
-    return parse_csv_line(csv_headings_line);
 }
 
 day make_day(string day_str)
@@ -209,7 +204,7 @@ csv_headings make_heading(string heading_str)
         return iterator->second;
 }
 
-Movie make_movie_from_line(vector<string> csv_movie_detailes, const vector<string> headings)
+Movie make_movie_from_line(const vector<string>& csv_movie_detailes, const vector<string>& headings)
 {
     Movie movie;
     for(int index = 0; index < NUM_OF_HEADINGS; index++)
@@ -225,8 +220,10 @@ MovieList parse_csv(string csv_path)
     ifstream csv_fileHandle(csv_path, fstream::in);
     string csv_line;
     MovieList movies_list;
+
     getline(csv_fileHandle, csv_line);
-    vector<string> headings = get_headings(csv_line);
+    vector<string> headings = parse_csv_line(csv_line);
+
     while(getline(csv_fileHandle, csv_line))
     {
         Movie movie = make_movie_from_line(parse_csv_line(csv_line), headings);
@@ -236,7 +233,7 @@ MovieList parse_csv(string csv_path)
     return movies_list;
 }
 
-tuple<int,string> extract_until_space(const string& line, int current_position)
+Extracted extract_until_space(const string& line, int current_position)
 {
     int index;
     string word;
@@ -263,10 +260,7 @@ string extract_the_rest_of_the_line(string line, int extraction_iterator)
 
 string extract_arg2(const Extracted& arg1, const string& line)
 {
-    if(get<WORD>(arg1).compare("ALL"))
-        return extract_the_rest_of_the_line(line, get<NEXT_WORD_START_INDEX>(arg1));
-    else
-        return get<WORD>(extract_until_space(line, get<NEXT_WORD_START_INDEX>(arg1)));
+    return extract_the_rest_of_the_line(line, get<NEXT_WORD_START_INDEX>(arg1));
 }
 
 vector<string> extract_command_pack(const string& line)
@@ -278,7 +272,7 @@ vector<string> extract_command_pack(const string& line)
     return command_details;
 }
 
-command_mode authenticate_command(vector<string> potential_command)
+command_mode authenticate_command(const vector<string>& potential_command)
 {
     if(potential_command[Get].compare("GET"))
         return Invalid;
@@ -307,7 +301,7 @@ MovieList find_movie_by_name(const MovieList& movies, string movie_name)
     return found_movies;
 }
 
-vector<vector<int>> get_same_Price_indeces(MovieList& movie_list)
+vector<vector<int>> get_same_Price_indeces(const MovieList& movie_list)
 {
     vector<vector<int>> same_price_indeces;
     for(int movie_it = 0; movie_it < movie_list.size(); movie_it++)
@@ -322,14 +316,15 @@ vector<vector<int>> get_same_Price_indeces(MovieList& movie_list)
     return same_price_indeces;
 }
 
-vector<vector<int>> get_same_StartTime_indeces(MovieList& movie_list)
+vector<vector<int>> get_same_StartTime_indeces(const MovieList& movie_list)
 {
     vector<vector<int>> same_StartTime_indeces;
     for(int movie_it = 0; movie_it < movie_list.size(); movie_it++)
     {
         Movie movie = movie_list[movie_it];
         if(same_StartTime_indeces.size() == 0 ||
-            !times_are_same(movie.StartingTime, movie_list[same_StartTime_indeces.back().back()].StartingTime))
+            !times_are_same(movie.StartingTime,
+                movie_list[same_StartTime_indeces.back().back()].StartingTime))
             same_StartTime_indeces.push_back(vector<int>({movie_it}));
         else
             same_StartTime_indeces.back().push_back(movie_it);
@@ -337,7 +332,8 @@ vector<vector<int>> get_same_StartTime_indeces(MovieList& movie_list)
     return same_StartTime_indeces;
 }
 
-MovieList sort_same_Price_by_CinemaName(MovieList movie_list, vector<vector<int>> same_Price_indeces)
+MovieList sort_same_Price_by_CinemaName(MovieList movie_list,
+    const vector<vector<int>>& same_Price_indeces)
 {
     for(vector<int> same_Price_index_pack: same_Price_indeces)
     {
@@ -358,7 +354,8 @@ MovieList sort_same_Price_by_CinemaName(MovieList movie_list, vector<vector<int>
     return movie_list;
 }
 
-MovieList sort_same_StartTimes_by_Price(MovieList movie_list, vector<vector<int>> same_StartTime_indeces)
+MovieList sort_same_StartTimes_by_Price(MovieList movie_list,
+    const vector<vector<int>>& same_StartTime_indeces)
 {
     for(vector<int> same_StartTime_index_pack: same_StartTime_indeces)
     {
@@ -383,7 +380,6 @@ MovieList sort_same_StartTimes_by_Price(MovieList movie_list, vector<vector<int>
 
 MovieList sort_MovieList(MovieList movie_list)
 {
-    MovieList sorted;
     movie_list = sort_by_StartTime(movie_list);
     vector<vector<int>> same_StartTime_indeces = get_same_StartTime_indeces(movie_list);
     movie_list = sort_same_StartTimes_by_Price(movie_list, same_StartTime_indeces);
@@ -397,7 +393,7 @@ WeekShowTimes sort_WeekShowTimes(WeekShowTimes showTimes)
     return showTimes;
 }
 
-MovieList undermine_conflicting_times(MovieList movie_list)
+MovieList undermine_conflicting_times(const MovieList& movie_list)
 {
     if(movie_list.size() == 0 || movie_list.size() == 1)
         return movie_list;
@@ -413,7 +409,7 @@ MovieList undermine_conflicting_times(MovieList movie_list)
     return no_conflict_movie_list;
 }
 
-WeekShowTimes make_schedule(WeekShowTimes showTimes)
+WeekShowTimes make_schedule(const WeekShowTimes& showTimes)
 {
     WeekShowTimes schedule(DAYS_IN_WEEK);
     for(int day_it = Saturday; day_it < DAYS_IN_WEEK; day_it++)
@@ -421,7 +417,7 @@ WeekShowTimes make_schedule(WeekShowTimes showTimes)
     return schedule;
 }
 
-WeekShowTimes pack_days(MovieList movie_list)
+WeekShowTimes pack_days(const MovieList& movie_list)
 {
     WeekShowTimes week_show_times(DAYS_IN_WEEK);
     for (Movie movie: movie_list)
@@ -456,7 +452,7 @@ void RUN_GET_ALL_MOVIES_COMMAND(const MovieList& movies)
     stdout_vector_of_string(movie_names);
 }
 
-Time movie_length(Movie movie)
+Time movie_length(const Movie& movie)
 {
     return make_tuple(get<Hour>(movie.FinishingTime) - get<Hour>(movie.StartingTime),
         get<Minute>(movie.FinishingTime) - get<Minute>(movie.StartingTime));
@@ -480,7 +476,7 @@ string put_key_times()
     return line;
 }
 
-int find_start_pillar(Movie movie)
+int find_start_pillar(const Movie& movie)
 {
     Time start = movie.StartingTime;
     return half_hours_in(make_tuple(get<Hour>(start) - 8, get<Minute>(start))) * 5 + 10;
@@ -527,7 +523,7 @@ void put_day_name(ConsoleMap& console_map, int day_it, int row)
     }
 }
 
-void remove_asterisks(ConsoleMap& console_map)
+void remove_fillers(ConsoleMap& console_map)
 {
     for(int row_index = 0; row_index < 16; row_index++)
         for(int col_index = 0; col_index < 175; col_index++)
@@ -535,23 +531,36 @@ void remove_asterisks(ConsoleMap& console_map)
                 console_map[row_index][col_index] = ' ';
 }
 
-void put_roof_ceiling_and_junction(ConsoleMap& console_map, int row)
+void put_roof(ConsoleMap& console_map, int row)
 {
     for(int col_index = 0; col_index < 175; col_index++)
     {
         if((col_index > 9 && isalpha(console_map[row][col_index])) ||
             (console_map[row][col_index] == '*' && console_map[row][col_index] != '|'))
-        {
-            if(console_map[row - 1][col_index] != '+') console_map[row - 1][col_index] = '-';
-            if(console_map[row + 1][col_index] != '+') console_map[row + 1][col_index] = '-';
-        }
+            if(console_map[row - 1][col_index] != '+')
+                console_map[row - 1][col_index] = '-';
+    }
+}
+
+void put_ceiling(ConsoleMap& console_map, int row)
+{
+    for(int col_index = 0; col_index < 175; col_index++)
+    {
+        if((col_index > 9 && isalpha(console_map[row][col_index])) ||
+            (console_map[row][col_index] == '*' && console_map[row][col_index] != '|'))
+            if(console_map[row + 1][col_index] != '+')
+                console_map[row + 1][col_index] = '-';
+    }
+}
+
+void put_junction(ConsoleMap& console_map, int row)
+{
+    for(int col_index = 0; col_index < 175; col_index++)
         if(console_map[row][col_index] == '|')
         {
             console_map[row - 1][col_index] = '+';
             console_map[row + 1][col_index] = '+';
         }
-    }
-    remove_asterisks(console_map);
 }
 
 ConsoleMap make_console_map(const WeekShowTimes& schedule, Time Movie_length)
@@ -565,7 +574,11 @@ ConsoleMap make_console_map(const WeekShowTimes& schedule, Time Movie_length)
         put_day_name(console_map, day_it, row);
         for(Movie movie: schedule[day_it])
             put_pillars_and_CinemaName(movie, console_map, row, spaces_between_pillars);
-        put_roof_ceiling_and_junction(console_map, row);
+        
+        put_roof(console_map, row);
+        put_ceiling(console_map, row);
+        put_junction(console_map, row);
+        remove_fillers(console_map);
     }
     return console_map;
 }
@@ -611,30 +624,30 @@ string put_pre_stuff()
     return line.str();
 }
 
-void write_to_html_file(string content, string file_name)
+void write_to_file(const string& content, string file_name)
 {
     ofstream output_fileHandle(file_name, ios::out);
     output_fileHandle << content << endl;
     output_fileHandle.close();
 }
 
-string put_width(Movie movie)
+string put_width(const Movie& movie)
 {
     return to_string(50 * half_hours_in(movie_length(movie)));
 }
 
-string put_left(Movie movie)
+string put_left(const Movie& movie)
 {
     return to_string(100 + 50 * half_hours_in(make_tuple(
         get<Hour>(movie.StartingTime) - 8, get<Minute>(movie.StartingTime))));
 }
 
-string put_top(Movie movie)
+string put_top(const Movie& movie)
 {
     return to_string(60 + static_cast<int>(movie.Day) * 50);
 }
 
-string put_movie_schedule(WeekShowTimes schedule)
+string put_movie_schedule(const WeekShowTimes& schedule)
 {
     stringstream line;
     for(int day_it = 0; day_it < DAYS_IN_WEEK; day_it++)
@@ -645,14 +658,14 @@ string put_movie_schedule(WeekShowTimes schedule)
     return line.str();
 }
 
-void make_html_file(const WeekShowTimes& schedule, string movie_name)
+string get_html_contents(const WeekShowTimes& schedule, string movie_name)
 {
-    stringstream html_contents;
-    html_contents << put_pre_stuff() << put_time_boxes() << endl
+    stringstream html_content;
+    html_content << put_pre_stuff() << put_time_boxes() << endl
         << put_vertical_lines() << endl << put_day_boxes() << endl
         << put_movie_schedule(schedule) << endl << "</body>" << endl
         << "</html>" << endl;
-    write_to_html_file(html_contents.str(), movie_name + ".html");
+    return html_content.str();
 }
 
 void RUN_GET_SCHEDULE_COMMAND(const MovieList& movie_list, string movie_name)
@@ -662,10 +675,11 @@ void RUN_GET_SCHEDULE_COMMAND(const MovieList& movie_list, string movie_name)
         return;
     
     WeekShowTimes schedule = get_schedule(movie_list, select_movie_data);
-    ConsoleMap console_map = make_console_map(schedule, movie_length(select_movie_data[0]));
 
+    ConsoleMap console_map = make_console_map(schedule, movie_length(select_movie_data[0]));
     stdout_vector_of_string(console_map);
-    make_html_file(schedule, movie_name);
+
+    write_to_file(get_html_contents(schedule, movie_name), movie_name + ".html");
 }
 
 void command_handler(const MovieList& movie_list, command_mode& command, string movie_name)               
