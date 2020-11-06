@@ -1,0 +1,645 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <queue>
+#include <unordered_map> 
+
+enum command_type{ADD_STAGE = 0, ADD_CAR, ADVANCE_TIME, SHOW_STAGE_INFO, SHOW_CARWASH_INFO, FINISH, INVALID};
+enum worker_state{idle = 0, working};
+enum car_state{in_queue = 0, being_washed, washed, out_of_carwash, not_defined};
+enum station_state{EMPTY = 0, FULL, NOT_INITIALIZED};
+
+using namespace std;
+
+class Car{
+    public:
+        Car(unsigned int ID, unsigned int luxuryCoef);
+        
+        void                set_state(car_state state) {m_state = state; }
+        bool                is_washed() {return m_state == washed; }
+
+        bool                doesnt_have_cooldown() {return !m_cooldown; }
+        void                remove_cooldown() {m_cooldown = false; }
+        void                set_cooldown() {m_cooldown = true; }
+
+        int                 get_ID() {return m_carID; }
+        unsigned int        get_coef() {return m_luxuryCoef; }
+    private:
+        bool                m_cooldown;
+        int                 m_carID;
+        car_state           m_state;
+        unsigned int        m_luxuryCoef;
+};
+
+class Worker
+{
+    public:
+        Worker(unsigned int workerID, unsigned int clumbsiness);
+        void                set_state(worker_state state) {m_state = state; }
+
+        unsigned int        get_ID() {return m_workerID; }
+        worker_state        get_state() {return m_state; }
+        unsigned int        get_speed() {return m_clumbsiness; }
+    private:
+        unsigned int        m_workerID;
+        worker_state        m_state;
+        unsigned int        m_clumbsiness;
+};
+
+class Station
+{
+    public:
+        Station(Worker *worker);
+        bool                is_empty() {return m_state == EMPTY || m_state == NOT_INITIALIZED; }
+        void                lead_in(Car car);
+        Car                 lead_out();
+
+        void                update_timeLeft();
+
+        bool                has_washed_car();
+        bool                has_car() {return m_state == FULL; }      
+
+        Worker*             get_worker() {return m_worker; }
+        Car*                get_car() {return m_car; }
+        int                 get_timeLeft() {return m_timeLeft; }
+    private:
+        Car*                m_car;
+        Worker*             m_worker;
+        unsigned int        m_timeLeft;
+        station_state       m_state;
+};
+
+class Stage
+{
+    public:
+        Stage(unsigned int stageID);
+
+        void                add_station(Worker *worker);
+
+        void                enqueue(Car car);
+        Car                 dequeue();
+
+        bool                can_start_straight_away();
+        void                start_working_on(Car car_to_come);
+
+        vector<Car*>        all_cars_in_queue();
+        vector<Car*>        all_cars_in_stations();
+        vector<Worker*>     all_workers();
+
+        Station*            find_empty_station();
+        Station*            find_finished_station();
+
+        void                remove_cooldowns();
+        void                perform_one_unit_of_wash();
+
+        bool                has_washed_car();
+        bool                has_car_in_queue();
+        bool                has_free_worker();
+
+        void                show_stage_info();
+    private:
+        unsigned int        m_stageID;
+        vector<Station*>    m_stations;
+        queue<Car*>         m_queue;
+};
+
+class Carwash
+{
+    public:
+        Carwash();
+
+        void                add_to_entryQueue(unsigned int coef);
+        void                add_to_carsExited(Car car);
+        void                add_stage(const vector<string> &arguments);
+
+        bool                has_car_in_entryQueue() {return m_entryQueue.size() != 0; }
+        void                remove_cooldowns();
+        Car                 lead_inside();
+
+        void                show_carwash_info(unsigned int time_passed);
+
+        int                 total_cars();
+        int                 last_workerID();
+        int                 last_carID();
+
+        vector<Stage*>      get_stages() {return m_stages; }
+        Stage*              get_stage(unsigned int stageID) {return m_stages[stageID]; }
+    private:
+        vector<Car*>        m_carsExited;
+        queue<Car*>         m_entryQueue;
+        vector<Stage*>      m_stages;
+};
+
+class Simulation
+{
+    public:
+        Simulation();
+        void                advance_time(unsigned int skip_count);
+        void                skip_forward();
+
+        void                start();
+        void                finish();
+        void                run_command(command_type command, const vector<string> &arguments);
+        
+        unsigned int        get_timePassed() {return m_timePassed; }
+    private:
+        Carwash*            m_carwash;
+        unsigned int        m_timePassed;
+};
+
+Worker::Worker(unsigned int workerID, unsigned int clumbsiness)
+{
+    m_workerID = workerID;
+    m_clumbsiness = clumbsiness;
+    m_state = idle;
+}
+
+Car::Car(unsigned int carID, unsigned int luxuryCoef)
+{
+    m_carID = carID;
+    m_luxuryCoef = luxuryCoef;
+    m_state = not_defined;
+    m_cooldown = 0;
+}
+
+Station::Station(Worker *worker)
+{
+    m_state = NOT_INITIALIZED;
+    m_worker = worker;
+}
+
+Stage::Stage(unsigned int stageID)
+{
+    m_stageID = stageID;
+    vector<Station*> m_stations;
+    queue<Car*> m_queue;
+}
+
+Carwash::Carwash()
+{
+    vector<Stage*> m_stages;
+    vector<Car*> m_carsExited;
+    queue<Car*> m_entryQueue;
+}
+
+Simulation::Simulation()
+{
+    m_carwash = new Carwash();
+    m_timePassed = 0;
+}
+
+void Stage::enqueue(Car car)
+{
+    Car *car_to_queue = new Car(car.get_ID(), car.get_coef());
+    m_queue.push(car_to_queue);
+    car_to_queue->set_cooldown();
+    car_to_queue->set_state(in_queue);
+}
+
+Car Stage::dequeue()
+{
+    Car dequeued_car = *(m_queue.front());
+    m_queue.pop();
+    return dequeued_car;
+}
+
+void Stage::add_station(Worker *worker)
+{
+    Station *new_station = new Station(worker);
+    m_stations.push_back(new_station);
+}
+
+vector<Car*> Stage::all_cars_in_stations()
+{
+    vector<Car*> cars_in_stations;
+    for(Station *station: m_stations)
+        if(station->has_car())
+            cars_in_stations.push_back(station->get_car());
+    return cars_in_stations;
+}
+
+vector<Worker*> Stage::all_workers()
+{
+    vector<Worker*> workers;
+    for(Station *station: m_stations)
+        workers.push_back(station->get_worker());
+    return workers;
+}
+
+int Carwash::last_workerID()
+{
+    int workers_count = 0;
+    for(Stage *stage: m_stages)
+    {
+        vector<Worker*> workers_in_stage = stage->all_workers();
+        workers_count += workers_in_stage.size();
+    }
+    return workers_count;
+}
+
+bool Station::has_washed_car()
+{
+    if(!this->has_car())
+        return false;
+    else
+        return m_car->is_washed();
+}
+
+int Carwash::total_cars()
+{
+    int car_count = m_entryQueue.size();
+    for(Stage *stage: m_stages)
+    {
+        vector<Car*> cars_inQ = stage->all_cars_in_queue();
+        vector<Car*> cars_in_stations = stage->all_cars_in_stations();
+        car_count += cars_inQ.size() + cars_in_stations.size();
+    }
+    return car_count;
+}
+
+int Carwash::last_carID()
+{
+    return this->total_cars();
+}
+
+void Carwash::add_stage(const vector<string> &arguments)
+{
+    unsigned int workerID = this->last_workerID();
+    Stage *new_stage = new Stage(m_stages.size());
+    int workers_count = stoi(arguments[1]);
+    for(int index = 0; index < workers_count; index++)
+    {
+        Worker *new_worker = new Worker(workerID, stoi(arguments[index + 2]));
+        new_stage->add_station(new_worker);
+        workerID++;
+    }
+    m_stages.push_back(new_stage);
+}
+
+void Carwash::add_to_entryQueue(unsigned int coef)
+{
+    Car *new_car = new Car(this->last_carID(), coef);
+    new_car->set_state(in_queue);
+    m_entryQueue.push(new_car);
+}
+
+bool Stage::has_free_worker()
+{
+    for(Station *station: m_stations)
+        if(station->is_empty())
+            return true;
+    return false;
+}
+
+Worker* oldest_worker(vector<Worker*> workers, unsigned int last_workerID)
+{
+    unsigned int last_ID = last_workerID;
+    Worker *old_worker;
+    for(Worker *worker: workers)
+        if(worker->get_ID() < last_ID)
+        {
+            last_ID = worker->get_ID();
+            old_worker = worker;
+        }
+    return old_worker;
+}
+
+Station* oldest_station(vector<Station*> stations, unsigned int last_workerID)
+{
+    unsigned int last_ID = last_workerID;
+    Station *old_station;
+    for(Station *station: stations)
+        if(station->get_worker()->get_ID() <= last_ID)
+        {
+            last_ID = station->get_worker()->get_ID();
+            old_station = station;
+        }
+    return old_station;
+}
+
+unsigned int max_workerID(vector<Station*> stations)
+{
+    int max_workerID = 0;
+    for(Station *station: stations)
+        if(station->get_worker()->get_ID() >= max_workerID)
+            max_workerID = station->get_worker()->get_ID();
+    return max_workerID;
+}
+
+Station* Stage::find_empty_station()
+{
+    vector<Station*> empty_stations;
+    for(Station *station: m_stations)
+        if(station->is_empty())
+            empty_stations.push_back(station);
+    return oldest_station(empty_stations, max_workerID(empty_stations));
+}
+
+void Station::update_timeLeft()
+{
+    m_timeLeft = (m_timeLeft <= 1) ? (0) : m_timeLeft - 1;
+    if(m_timeLeft == 0)
+        m_car->set_state(washed);
+}
+
+void Station::lead_in(Car car)
+{
+    m_car = new Car(car.get_ID(), car.get_coef());
+    m_state = FULL;
+    m_worker->set_state(working);
+    m_car->set_state(being_washed);
+    m_car->set_cooldown();
+    m_timeLeft = m_worker->get_speed() * m_car->get_coef();
+}
+
+bool Stage::has_car_in_queue()
+{
+    return m_queue.size() != 0 && m_queue.front()->doesnt_have_cooldown();
+}
+
+bool Stage::has_washed_car()
+{
+    for(Station *station: m_stations)
+        if(station->has_washed_car())
+            return true;
+    return false;
+}
+
+Station* Stage::find_finished_station()
+{
+    vector<Station*> finished_stations;
+    for(Station *station: m_stations)
+        if(station->has_washed_car())
+            finished_stations.push_back(station);
+    return oldest_station(finished_stations, max_workerID(finished_stations));
+}
+
+Car Station::lead_out()
+{
+    Car car_exiting = *m_car;
+    delete m_car;
+    m_state = EMPTY;
+    m_worker->set_state(idle);
+    return car_exiting;
+}
+
+void Stage::perform_one_unit_of_wash()
+{
+    for(Station *station: m_stations)
+        if(station->has_car())
+            if(station->get_car()->doesnt_have_cooldown())
+                station->update_timeLeft();
+}
+
+void Stage::remove_cooldowns()
+{
+    for(Station *station: m_stations)
+        if(station->has_car())
+            station->get_car()->remove_cooldown();
+    vector<Car*> cars_in_queue = this->all_cars_in_queue();
+    for(Car *car: cars_in_queue)
+        car->remove_cooldown();
+}
+
+void Carwash::remove_cooldowns()
+{
+    for(Stage *stage: m_stages)
+        stage->remove_cooldowns();
+}
+
+Car Carwash::lead_inside()
+{
+    Car car_to_come_inside = *(m_entryQueue.front());
+    m_entryQueue.pop();
+    return car_to_come_inside;
+}
+
+bool Stage::can_start_straight_away()
+{
+    return !this->has_car_in_queue() && this->has_free_worker();
+}
+
+void Stage::start_working_on(Car car_to_come)
+{
+    Station *empty_station = this->find_empty_station();
+    empty_station->lead_in(car_to_come);
+}
+
+void Carwash::add_to_carsExited(Car car)
+{
+    Car *car_to_exit = new Car(car.get_ID(), car.get_coef());
+    m_carsExited.push_back(car_to_exit);
+}
+
+void Simulation::skip_forward()
+{
+    vector<Stage*> stages = m_carwash->get_stages();
+    if(m_carwash->has_car_in_entryQueue())
+    {
+        Car next_car_in_line = m_carwash->lead_inside();
+        if(stages.size() != 0)
+            if(stages[0]->can_start_straight_away())
+                stages[0]->start_working_on(next_car_in_line);
+        else
+            m_carwash->add_to_carsExited(next_car_in_line);
+    }
+
+    for(int index = 0; index < stages.size(); index++)
+    {
+        Stage* stage = stages[index];
+        
+        if(stage->has_washed_car())
+        {
+            Station *finshed_station = stage->find_finished_station();
+            Car washed_car = finshed_station->lead_out();
+            if(index != stages.size() - 1 && stage->can_start_straight_away())
+                stage->start_working_on(washed_car);
+            else if (index == stages.size() - 1)
+                m_carwash->add_to_carsExited(washed_car);
+            else
+                stages[index + 1]->enqueue(washed_car);
+        }
+        
+        if(stage->has_car_in_queue() && stage->has_free_worker())
+        {
+            Station *empty_station = stage->find_empty_station();
+            
+            Car next_car_in_line = stage->dequeue();
+            empty_station->lead_in(next_car_in_line);
+        }
+
+        stage->perform_one_unit_of_wash();
+    }
+}
+
+void Simulation::advance_time(unsigned int skip_count)
+{
+    while(skip_count != 0)
+    {
+        this->skip_forward();
+        
+        m_timePassed++;
+        m_carwash->remove_cooldowns();
+        skip_count--;
+    }
+}
+
+void Stage::show_stage_info()
+{
+    cout << "Stage ID: " << m_stageID << endl;
+    for(Station *station: m_stations)
+    {
+        cout << "Worker ID: " << station->get_worker()->get_ID() << endl;
+        if(station->get_worker()->get_state() == idle)
+            cout << "Free" << endl;
+        else
+            cout << "Car ID: " << station->get_car()->get_ID() << endl 
+            << "Luxury coefficient: " << station->get_car()->get_coef() << endl
+            << "Time left: " << station->get_timeLeft() << endl;
+    }
+    cout << "Cars in waiting queue: " << endl;
+    vector<Car*> cars_in_queue = this->all_cars_in_queue();
+    for(Car *car: cars_in_queue)
+        cout << "Car ID: " << car->get_ID() << endl
+        << "Luxury coefficient: " << car->get_coef() << endl;
+}
+
+vector<Car*> convert_queue_to_vector(queue<Car*> queue)
+{
+    vector<Car*> myvec;
+    while(queue.size() != 0)
+    {
+        myvec.push_back(queue.front());
+        queue.pop();
+    }
+    return myvec;
+}
+
+vector<Car*> Stage::all_cars_in_queue()
+{
+    return convert_queue_to_vector(m_queue);
+}
+
+void Carwash::show_carwash_info(unsigned int time_passed)
+{
+    cout << "Passed time: " << time_passed << endl;
+    vector<Car*> cars_in_entry_queue = convert_queue_to_vector(m_entryQueue);
+    cout << "Cars waiting: " << endl;
+    for(Car *car: cars_in_entry_queue)
+        cout << "Car ID: " << car->get_ID() << endl
+        << "Luxury coefficient: " << car->get_coef() << endl;
+    cout << "Stages info: " << endl;
+    for(Stage *stage: m_stages)
+        stage->show_stage_info();
+    
+    cout << "Cars finished: " << endl;
+    for(Car *car: m_carsExited)
+        cout << "Car ID: " << car->get_ID() << endl
+        << "Luxury coefficient: " << car->get_coef() << endl;
+}
+
+void Simulation::finish()
+{
+    while(m_carwash->total_cars() != 0)
+    {
+        this->skip_forward();
+        m_timePassed++;
+        m_carwash->remove_cooldowns();
+    } 
+}
+
+void Simulation::run_command(command_type command, const vector<string> &arguments)
+{
+    switch (command)
+    {
+    case ADD_STAGE:
+        m_carwash->add_stage(arguments);
+        cout << "OK" << endl;
+        break;
+    case ADD_CAR:
+        m_carwash->add_to_entryQueue(stoi(arguments[1]));
+        cout << "OK" << endl;
+        break;
+    case ADVANCE_TIME:
+        this->advance_time((unsigned int)stoi(arguments[1]));
+        cout << "OK" << endl;
+        break;
+    case SHOW_STAGE_INFO:
+        m_carwash->get_stage((unsigned int)stoi(arguments[1]))->show_stage_info();
+        break;
+    case SHOW_CARWASH_INFO:
+        m_carwash->show_carwash_info(m_timePassed);
+        break;
+    case FINISH:
+        this->finish();
+        cout << "OK" << endl;
+        break;
+    case INVALID:
+        return;
+    }
+}
+
+int command_argument_count(command_type command, const vector<string> &line)
+{
+    switch (command)
+    {
+    case ADD_STAGE:
+        return stoi(line[1]) + 2;
+    case ADD_CAR:
+        return 2;
+    case ADVANCE_TIME:
+        return 2;
+    case SHOW_STAGE_INFO:
+        return 2;
+    case SHOW_CARWASH_INFO:
+        return 1;
+    case FINISH:
+        return 1;
+    }
+}
+
+command_type categorize_command(const vector<string> &command_str)
+{
+    command_type command;
+    unordered_map<string, command_type> command_map =
+        {{"add_stage", ADD_STAGE}, {"add_car", ADD_CAR}, {"advance_time", ADVANCE_TIME},
+        {"show_stage_info", SHOW_STAGE_INFO}, {"show_carwash_info", SHOW_CARWASH_INFO}, {"finish", FINISH}};
+    auto iterator = command_map.find(command_str[0]);
+    if (iterator != command_map.end())
+        command = iterator->second;
+    else
+        return INVALID;
+    if(command_argument_count(command, command_str) != command_str.size())
+        return INVALID;
+    return command;
+}
+
+vector<string> split_on_whitespace(const string &line_str) 
+{
+    vector<string> result; 
+    istringstream iss(line_str); 
+    for(string line_str; iss >> line_str; ) 
+        result.push_back(line_str);
+    return result;
+}
+
+void Simulation::start()
+{
+    string command_str;
+    while(getline(cin, command_str))
+    {
+        vector<string> arguments = split_on_whitespace(command_str);
+        if(arguments.size() == 0)
+            continue;
+        command_type command = categorize_command(arguments);
+        this->run_command(command, arguments);
+    }
+}
+
+int main()
+{
+    Simulation simulation;
+    simulation.start();
+    return  0;
+}
